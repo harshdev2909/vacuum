@@ -1,0 +1,44 @@
+// Uniswap official: https://docs.uniswap.org/contracts/v3/reference/deployments/arbitrum-deployments
+export const ARBITRUM_SEPOLIA = {
+  chainId: 421614,
+  rpc: "https://sepolia-rollup.arbitrum.io/rpc",
+  explorer: "https://sepolia.arbiscan.io",
+  weth: "0x980B62Da83eFf3D4576C647993b0c1D7faf17c73",
+  arb: "0x414CCf6A4ce15BC5fda47595b9A9CB7561dE9ac9",
+  usdc: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4D",
+} as const;
+
+export const ARBITRUM_ONE = {
+  chainId: 42161,
+  weth: "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
+  usdc: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+} as const;
+
+export const DEFAULT_ROUTER = "0xe5f2CFeD1441010a3f79fF904dea7b09e9Ef2a8C";
+export const ROUTER_WITH_WRAP = "0xe5f2CFeD1441010a3f79fF904dea7b09e9Ef2a8C";
+export const REFERRAL_REGISTRY = "0x673d380C14E9031dD3835976805a99579c679Caa";
+export const WALLET_AUTH = "0x3d5Ca0C49c3C92b6D7619112cC071357C2DFD0AF";
+export const FEE_MANAGER = "0x2f42a9F31FdDC4B882D29e7A9Ff3712f4706Bc67";
+export const VAULT_FACTORY = "0x556C7b4d4EFBCd6fea9fc93498946fB63fFADA55";
+export const VAULT = "0xaC85Ad414b9d123554DbcD9470046BA285206b7A";
+
+/* Strategy NFT, Registry, Subscription, Marketplace (Arbitrum Sepolia) */
+export const STRATEGY_REGISTRY = "0x2a6EC49e2B91279b554592bd1CEdd5F98DE199cF";
+export const STRATEGY_NFT = "0xA7eD2A85Ac7d18bF5CcF9705700ecdd835742DdF";
+export const ROYALTY_DISTRIBUTOR = "0x94bbC7267Ad6e96D7Dd70A468759938D2545E7d6";
+export const STRATEGY_SUBSCRIPTION_MANAGER = "0x40A6C345b6B89e11cA03F157174A7B4db1b59cDA";
+export const STRATEGY_MARKETPLACE = "0xD709d1D7c85f8eCaB1B5b0cA58CaCC7B21FB9EFD";
+
+/* DAO Automation (Arbitrum Sepolia) */
+export const RISK_GUARD = "0x786378502e36DBD19472E18ED51fA296d54918F2";
+export const POLICY_ENGINE = "0xF46B8af589C6896B8c744acB3465D79AE6F57411";
+export const TREASURY_AUTOMATION_CONTROLLER = "0x6FC1E35b5e3D2c0C21Fc7B5512a8DA321662Cf95";
+export const BUYBACK_MODULE = "0x251950EB71DdcAAf195e104Fb9C8A55DDb117dE8";
+export const GOVERNANCE_EXECUTOR_ADAPTER = "0x52aef193D52Af430a9854F72e3d96013DE7Fde36";
+
+/* Phase 5 (deployed, not integrated in UI): AgentRegistry 0xC9C3Be78B488349724E56A25E12Abad29F5Df80d, AgentRevenueDistributor 0x5FeA0674926cd0A78dc97e0Be7FF3D6e6FBD4136, AgentSubscriptionManager 0x37b41e1eB5C3865a03C7ab1a7b90226fE8B9F2f9 */
+
+
+//AgentRegistry: 0xC9C3Be78B488349724E56A25E12Abad29F5Df80d
+//AgentRevenueDistributor: 0x5FeA0674926cd0A78dc97e0Be7FF3D6e6FBD4136
+//AgentSubscriptionManager: 0x37b41e1eB5C3865a03C7ab1a7b90226fE8B9F2f9
