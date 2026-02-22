@@ -1,124 +1,275 @@
-# arbi-execution-layer
+# Vacuum
 
-Production-grade Arbitrum-native trading execution layer. Executes swaps via **live Uniswap V3** (SwapRouter02) on Arbitrum, with protocol fees, referral rewards, multi-wallet authorization (EIP-712), slippage protection, and emergency controls.
+Arbitrum-native execution layer and superapp: swap (Uniswap V3), ERC-4626 vaults, strategy NFTs, DAO automation, non-custodial agents, and an optional private RPC with MEV protection. Fully permissionless; no backend required for core flows. Built on ERC-20, ERC-4626, and EIP-712.
 
-## Stack
+---
 
-- **Solidity** ^0.8.24  
-- **Hardhat** + **Ethers v6** + **TypeScript**  
-- **OpenZeppelin** contracts  
-- **Hardhat Toolbox** + network forking (Arbitrum Sepolia or Arbitrum One)
+## Repository structure
 
-## Contracts
+```
+arbitrum/
+├── contracts/              # Solidity (Hardhat, OpenZeppelin)
+│   ├── ExecutionRouter.sol, FeeManager.sol, ReferralRegistry.sol, WalletAuthorization
+│   ├── vault/              # ERC-4626 vaults, BaseStrategy, UniswapV3LPStrategy
+│   ├── strategy/           # StrategyNFT, StrategyRegistry
+│   ├── royalty/            # RoyaltyDistributor
+│   ├── subscription/       # StrategySubscriptionManager
+│   ├── marketplace/        # StrategyMarketplace
+│   └── dao/                # RiskGuard, PolicyEngine, TreasuryAutomationController, BuybackModule, GovernanceExecutorAdapter
+├── execution-engine/       # Node.js: private RPC, Redis queue, mempool listener, MEV guard, simulation, bundler
+├── packages/
+│   ├── sdk/                # vacuum-sdk: TypeScript client (execution, vaults, strategies, DAO, agents)
+│   └── agent/              # @vacuum/agent: non-custodial agent framework (StrategyAgent, VaultAgent, DaoAutomationAgent)
+├── frontend/               # React (Vite, wagmi, RainbowKit): app UI, docs, landing, memo
+└── package.json            # Workspaces: packages/sdk, packages/agent
+```
+
+Sub-project READMEs: `contracts/vault/README.md`, `execution-engine/README.md`, `packages/sdk/README.md`, `packages/agent/README.md`. Additional contract docs under `contracts/`.
+
+---
+
+## Tech stack
+
+| Layer | Technology |
+|-------|------------|
+| Contracts | Solidity ^0.8.24, Hardhat, Ethers v6, OpenZeppelin, Hardhat Toolbox |
+| Networks | Arbitrum Sepolia (testnet), Arbitrum One (mainnet); fork-based tests |
+| Execution engine | Node.js, TypeScript, express, ioredis (Redis), ethers v6, pino, prom-client |
+| SDK | TypeScript, ethers v6, Node and browser |
+| Agents | TypeScript, vacuum-sdk, EIP-712 signing |
+| Frontend | React, Vite, React Router, wagmi, RainbowKit, Tailwind-style CSS, Framer Motion |
+
+Standards: ERC-20 (tokens), ERC-4626 (vaults), ERC-721/ERC-2981 (strategy NFTs), EIP-712 (typed signing and delegate authorization).
+
+---
+
+## Contracts (technical summary)
+
+### Execution and fees
 
 | Contract | Role |
 |----------|------|
-| **ExecutionRouter** | Executes swaps via Uniswap V3 (exactInputSingle, exactInput, exactOutputSingle, exactOutput), enforces slippage/deadline, deducts fee, distributes referral, emits `TradeExecuted`. ReentrancyGuard, Pausable, Ownable, nonce replay protection. |
-| **FeeManager** | Protocol fee (bps), referral split (bps), max fee cap (2%), treasury address, multi-token fee accounting, `FeeCollected` events, treasury withdrawals. |
-| **ReferralRegistry** | One-time referrer binding per user, no self-referral, referral earnings, `claimRewards`. |
-| **WalletAuthorization** | EIP-712 delegate authorization and revoke, nonce-based replay protection. |
+| **ExecutionRouter** | Executes swaps via Uniswap V3 SwapRouter02 (exactInputSingle, exactInput, exactOutputSingle, exactOutput). Enforces slippage and deadline; deducts protocol fee; sends referral share to ReferralRegistry and treasury share to FeeManager treasury address; emits TradeExecuted. ReentrancyGuard, Pausable, Ownable, nonce replay protection. |
+| **FeeManager** | Holds protocol fee (bps), referral split (bps), treasury address, executor (ExecutionRouter). `recordFeeCollected(token, from, totalFeeAmount, referralAmount)` called by executor for accounting. `withdrawToTreasury(token, amount)` sends tokens held by the FeeManager contract to treasury (owner-only). Fees from swaps are sent directly to treasury by the router; FeeManager does not receive those tokens. |
+| **ReferralRegistry** | One-time referrer binding per user; no self-referral; `creditReward(referrer, token, amount)`; `claimRewards(token, to)`. |
+| **WalletAuthorization** | EIP-712 delegate authorization and revoke; nonce-based replay protection. |
 
-## Local environment (Uniswap-style)
+### Vault (ERC-4626)
 
-This project follows the same ideas as [Uniswap’s local environment guide](https://docs.uniswap.org/contracts/v3/guides/local-environment): Hardhat, tests, and a **mainnet fork** so you can test against real Uniswap V3 liquidity without deploying to a live network.
+| Contract | Role |
+|----------|------|
+| **Vault** | ERC-4626; deposit cap; optional withdrawal fee; performance fee on profit only; strategy integration; pause. |
+| **BaseStrategy** | Abstract; only vault may call deposit/withdraw; strategies implement harvest(), balanceOf(). |
+| **UniswapV3LPStrategy** | Single Uniswap V3 position; deposit/withdraw/harvest; balanceOf() uses pool sqrtPriceX96. |
+| **VaultFactory** | createVault, createVaultWithStrategy, registerVault. |
+| **UniswapV3VaultFactory** | Deploys vault + Uniswap V3 LP strategy in one tx. |
 
-Differences from that guide:
+See `contracts/vault/README.md` for harvest flow, fee caps, and deployment.
 
-- We target **Arbitrum** (Sepolia testnet or Arbitrum One), not Ethereum mainnet.
-- We integrate with Uniswap V3 by calling the **deployed SwapRouter02** at a known address and use our own **IV3SwapRouter** interface. We do **not** add `@uniswap/v3-periphery` or `@uniswap/v3-core` or compile Uniswap’s Solidity (we use Solidity 0.8.24 and OpenZeppelin only).
-- Forking is built into Hardhat: the default `hardhat` network is already an Arbitrum Sepolia fork; use `FORK_MAINNET=1` for an Arbitrum One fork. No separate “start a node” step unless you want a long‑lived local node.
+### Phase 3: Strategy tokenization and marketplace
 
-Equivalent workflow:
+| Contract | Role |
+|----------|------|
+| **StrategyNFT** | ERC721 + ERC2981; minted on strategy register; stores strategy address, creator, version, metadata URI. |
+| **StrategyRegistry** | Registers strategy (type, risk level, performance hash, metadata); mints NFT to creator; only creator can upgrade version. |
+| **StrategySubscriptionManager** | Pay in ERC20 to subscribe by duration; subscription required for execution when using strategy binding. |
+| **RoyaltyDistributor** | Splits revenue (creator, protocol, optional affiliate); claimable per (account, token). |
+| **StrategyMarketplace** | List/buy Strategy NFT at fixed price (ERC20); royalties to RoyaltyDistributor. |
+| **ExecutionRouter (binding)** | `executeExactInputSingleWithStrategy(..., strategyTokenId)`: enforces NFT ownership, active subscription, active strategy version. |
 
-| Uniswap guide | This repo |
-|---------------|-----------|
-| `npx hardhat compile` | `npm run compile` |
-| Local node + mainnet fork | Hardhat’s built‑in fork (see **Tests** below) |
-| `npx hardhat test --network localhost` | `npm run test` or `npm run fork:test` (see **Tests**) |
+See `contracts/phase3/README.md` for flows and deployment.
 
-If you run a persistent Hardhat node (e.g. `npm run node:fork`), you can run tests against it with `npx hardhat test --network localhost`.
+### Phase 4: DAO automation
 
-### Set up local environment and swap
+| Contract | Role |
+|----------|------|
+| **RiskGuard** | Max daily spend (ETH), max slippage (bps), whitelist, pause. `validateExecution(target, spendAmount)`; controller calls `recordSpend` after execution. |
+| **PolicyEngine** | Rules (Always, TimestampAfter, IntervalElapsed); execution limits; `triggerRule(ruleId, payload)`. |
+| **TreasuryAutomationController** | Owner-only `executeAutomatedSwap` (RiskGuard check, then ExecutionRouter with treasury as beneficiary); `executeVaultHarvest(vault)` for whitelisted vaults. |
+| **BuybackModule** | TWAP-style schedules; `executeBuybackChunk(scheduleId, ...)` per chunk. |
+| **GovernanceExecutorAdapter** | Single executor; `execute(target, value, data)` only by executor (e.g. Timelock). |
 
-1. **Install and compile**
-   ```bash
-   npm install
-   npm run compile
-   ```
+See `contracts/phase4-phase5-README.md` for Phase 4 and Phase 5 (agent registry, staking, revenue, subscriptions).
 
-2. **Optional: put your wallet in `.env`**
-   ```bash
-   cp .env.example .env
-   # Edit .env and set PRIVATE_KEY=0x...
-   ```
+---
 
-3. **Deploy on fork and run a swap (one command)**  
-   This uses Hardhat’s in-process Arbitrum Sepolia fork: it deploys `ExecutionRouter` (and dependencies), then swaps ~$1 of ETH → ARB.
-   ```bash
-   npm run local:swap
-   ```
-   For an Arbitrum One fork (ETH → USDC): `FORK_MAINNET=1 npm run local:swap`  
-   *Note: Some setups hit a Hardhat + Arbitrum fork “hardfork” error. If so, use the testnet flow below.*
+## Execution engine (private RPC and MEV protection)
 
-4. **Alternative: swap on live testnet (no fork)**  
-   With a deployed router on Arbitrum Sepolia (e.g. from `npm run deploy:sepolia`), set `DEPLOYED_EXECUTION_ROUTER` in `.env` and run:
-   ```bash
-   npm run swap:eth-to-usdc -- --network arbitrum-sepolia
-   ```
-   (Requires testnet ETH and a pool with liquidity; for mainnet USDC use `--network arbitrum-one` after deploying there.)
+The execution engine is a Node.js service that accepts signed transactions, enqueues to Redis, then runs simulation, MEV guard, gas handling, and broadcast. It does not hold private keys.
 
-4. **Optional: local node + localhost**  
-   To use a long-lived node (like the Uniswap guide’s “Local Node with a Mainnet Fork”):
-   - Terminal 1: `FORK_MAINNET=1 npm run node:fork` (or `npm run node:fork` for Sepolia fork)
-   - Terminal 2: `npx hardhat run scripts/deploy.ts --network localhost`, then set `DEPLOYED_EXECUTION_ROUTER` and run `npm run swap:eth-to-usdc -- --network localhost`
+- **Private RPC**: HTTP server; accepts `eth_sendRawTransaction` and `vacuum_execute` (EIP-712); validates API key and nonce; enqueues to Redis.
+- **Worker**: Dequeues tx; simulates with eth_call/estimateGas; runs MEV guard (risk score, action: safe / increaseGas / bundle / reject); applies gas manager; broadcasts (optional private relay, fallback to public RPC).
+- **Mempool listener**: WebSocket subscription to pending txs; decodes Uniswap V3 (and Camelot-style) swaps; maintains snapshot in Redis for MEV evaluation.
+- **Bundler**: Sequential broadcast of multiple txs (order preserved).
 
-## Setup
+Run: Redis required; then `cd execution-engine && npm install && cp .env.example .env && npm run build && npm start`. RPC at `http://localhost:8545`; health at `GET /health`; metrics at `GET /metrics`. See `execution-engine/README.md` for architecture, MEV logic, and configuration.
+
+---
+
+## SDK (vacuum-sdk)
+
+TypeScript client for execution, vaults, strategies, DAO, and agents. Works in Node and browser; peer dependency ethers ^6.0.0.
+
+- **execution**: swapExactInputSingle, getQuote, simulateSwap, approveToken, estimateSwapGas; optional slippage helper.
+- **vaults**: deposit, withdraw, redeem, previewDeposit/Withdraw, getVaultInfo, getUserPosition.
+- **strategies**: registerStrategy, subscribe, cancelSubscription, listMarketplace, buyStrategy, claimRoyalty.
+- **dao**: getPolicyStatus, canExecute, triggerRule, getTreasuryExposure, getBuybackSchedules.
+- **agents**: registerAgent, stakeAgent, subscribeToAgent, claimAgentRevenue, getAgentMetadata.
+
+Install: `npm install vacuum-sdk ethers`. Default addresses target Arbitrum Sepolia; override via `addresses` for other networks. See `packages/sdk/README.md` and `packages/sdk/API.md`.
+
+---
+
+## Agent package (@vacuum/agent)
+
+Non-custodial agent framework. Agents use the SDK signer and never hold user keys; they respect RiskGuard and PolicyEngine.
+
+- **BaseAgent**: start(), stop(), evaluate(), generateSignal(), submitExecution().
+- **StrategyAgent**: Swap signals; subscription check; slippage.
+- **VaultAgent**: Harvest/rebalance signals; risk caps.
+- **DaoAutomationAgent**: Rule trigger and buyback; policy and RiskGuard validation.
+
+Install: `npm install @vacuum/agent vacuum-sdk ethers`. See `packages/agent/README.md` and `packages/agent/AGENTS.md`.
+
+---
+
+## Frontend
+
+React app (Vite) with wagmi and RainbowKit: swap, vault, strategy (subscribe, list, buy), DAO (RiskGuard, PolicyEngine, treasury controller, buyback, adapter), referral, delegate execution, protocol info (FeeManager balances, withdraw to treasury), and agent/protocol tabs. Includes landing page, docs (overview, SDK, execution engine, run locally), and memo/pitch page. Contract addresses for Arbitrum Sepolia are in `frontend/src/constants.ts`.
+
+Run: `cd frontend && npm install && npm run dev`.
+
+---
+
+## Environment variables
+
+No emojis; list only. Use `.env` in each directory as needed.
+
+### Root / contracts (Hardhat)
+
+Used for deploy, verify, and scripts (e.g. `npm run deploy:sepolia`, `npm run swap:eth-to-usdc`).
+
+| Variable | Description |
+|----------|-------------|
+| ARBITRUM_SEPOLIA_RPC_URL | RPC for Arbitrum Sepolia (fork and deploy). |
+| ARBITRUM_ONE_RPC_URL | RPC for Arbitrum One. |
+| PRIVATE_KEY | Deployer or signer key (hex). |
+| TREASURY_ADDRESS | Fee recipient for FeeManager (default: deployer). |
+| PROTOCOL_FEE_BPS | Protocol fee in basis points (e.g. 50 = 0.5%). |
+| REFERRAL_SPLIT_BPS | Referrer share of fee in bps (e.g. 5000 = 50%). |
+| ARBISCAN_API_KEY | Arbiscan API key for verification. |
+| ARBISCAN_SEPOLIA_API_KEY | Arbiscan Sepolia API key. |
+| FORK_MAINNET | Set to 1 to use Arbitrum One fork for tests/scripts. |
+| FORK_BLOCK_NUMBER | Optional pinned block for fork. |
+| DEPLOYED_EXECUTION_ROUTER | Set after deploy for swap scripts. |
+| DEPLOYED_FEE_MANAGER | For verify script. |
+| DEPLOYED_REFERRAL_REGISTRY | For verify script. |
+| DEPLOYED_WALLET_AUTH | For verify script. |
+| EXECUTION_ROUTER_ADDRESS | Used when deploying TreasuryAutomationController. |
+| PROTOCOL_TREASURY | Used when deploying agent revenue/distributor. |
+| STAKING_TOKEN | Optional; for AgentStaking deployment. |
+
+### Execution engine (`execution-engine/.env`)
+
+| Variable | Description |
+|----------|-------------|
+| RPC_URL | Arbitrum JSON-RPC for broadcast and simulation. |
+| RPC_WS_URL | WebSocket RPC for mempool pending tx subscription. |
+| PRIVATE_RELAY_URL | Optional private relay/sequencer for broadcast. |
+| REDIS_URL | Redis connection (queue and mempool snapshot). |
+| API_KEYS | Comma-separated keys for X-API-Key on POST /rpc. |
+| CHAIN_ID | 42161 (Arbitrum One) or 421614 (Arbitrum Sepolia). |
+| MAX_GAS_MULTIPLIER | Cap for gas price multiplier. |
+| RISK_THRESHOLD | 0–100; above this risk score tx is rejected. |
+| MAX_SLIPPAGE_BPS | Max slippage override in bps. |
+| MEMPOOL_WINDOW_BLOCKS | Mempool activity window for MEV. |
+| QUEUE_NAME | Redis list name for tx queue. |
+| PORT | HTTP server port (default 8545). |
+| METRICS_ENABLED | Set to true to expose GET /metrics. |
+| LOG_LEVEL | debug, info, warn, or error. |
+| RUN_MEMPOOL | Set to false to disable mempool listener. |
+| RUN_WORKER | Set to false to disable worker (RPC only). |
+
+### Agent package (`packages/agent/.env`)
+
+| Variable | Description |
+|----------|-------------|
+| RPC_URL | RPC endpoint for SDK. |
+| CHAIN_ID | Chain ID (e.g. 421614, 42161). |
+| PRIVATE_KEY | Signer key for agent (hex). |
+| DRY_RUN | If true, evaluate only; do not submit. |
+| LOG_LEVEL | Log level. |
+| RULE_ID | Optional; for DAO rule trigger. |
+| VAULT_ADDRESS | Optional; for vault agent. |
+| STRATEGY_TOKEN_ID | Optional; for strategy agent. |
+
+---
+
+## Build and test
+
+### Contracts
 
 ```bash
 npm install
-cp .env.example .env   # optional
-```
-
-### Environment (optional)
-
-- `ARBITRUM_SEPOLIA_RPC_URL` – RPC for Arbitrum Sepolia (fork / deploy)
-- `ARBITRUM_ONE_RPC_URL` – RPC for Arbitrum One
-- `PRIVATE_KEY` – deployer key
-- `ARBISCAN_API_KEY` / `ARBISCAN_SEPOLIA_API_KEY` – for contract verification
-- `TREASURY_ADDRESS` – fee recipient (default: deployer)
-- `PROTOCOL_FEE_BPS` – e.g. 50 (0.5%)
-- `REFERRAL_SPLIT_BPS` – e.g. 5000 (50% of fee to referrer)
-- `FORK_MAINNET=1` – use Arbitrum One fork for integration tests
-- `FORK_BLOCK_NUMBER` – optional pinned block for fork
-
-## Build
-
-```bash
 npm run compile
 ```
 
-## Tests
-
-- **Unit** (mock router or testnet fork): fee math, referral registration, slippage/deadline/pause/nonce/unauthorized.
-- **Integration** (real Uniswap V3 on fork): ETH→USDC, USDC→WETH, fee deduction, referral allocation, treasury, slippage revert.
+Unit tests (default: Arbitrum Sepolia fork):
 
 ```bash
-# Unit tests (default: Arbitrum Sepolia fork)
 npm run test:unit
-# or explicitly
-npx hardhat test test/unit/FeeManager.test.ts test/unit/ReferralRegistry.test.ts test/unit/WalletAuthorization.test.ts test/unit/ExecutionRouter.test.ts
-
-# Integration tests (Arbitrum One fork, real swaps)
-FORK_MAINNET=1 npx hardhat test test/integration/ExecutionRouter.fork.test.ts
-
-# All tests
-npm run test
 ```
 
-## Deploy (testnet first)
+Integration tests (Arbitrum One fork, real Uniswap V3):
 
 ```bash
-# Arbitrum Sepolia
+FORK_MAINNET=1 npx hardhat test test/integration/ExecutionRouter.fork.test.ts
+```
+
+Vault unit/integration:
+
+```bash
+npx hardhat test test/unit/Vault.test.ts test/unit/VaultFactory.test.ts
+FORK_MAINNET=1 npx hardhat test test/integration/Vault.fork.test.ts
+```
+
+Strategy, DAO, and agent tests: see `test/unit/` and the READMEs under `contracts/`.
+
+### Execution engine
+
+```bash
+cd execution-engine
+npm install
+npm run build
+npm test
+npm start
+```
+
+### SDK and agent
+
+From repo root (workspaces) or inside `packages/sdk` / `packages/agent`:
+
+```bash
+npm install
+npm run build
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+---
+
+## Deploy
+
+Arbitrum Sepolia (testnet first):
+
+```bash
+# Core (ExecutionRouter, FeeManager, ReferralRegistry, WalletAuth)
 npm run deploy:sepolia
 
 # Optional env for deploy
@@ -127,40 +278,46 @@ export PROTOCOL_FEE_BPS=50
 export REFERRAL_SPLIT_BPS=5000
 ```
 
-## Verify on Arbiscan
+Vault, strategy, DAO, and agent deployments: see `contracts/vault/README.md` and the other READMEs under `contracts/` for script order.
 
-After deploy, set the addresses (from deploy output) and run:
+Verify on Arbiscan (set deployed addresses in env):
 
 ```bash
 export DEPLOYED_FEE_MANAGER=0x...
 export DEPLOYED_REFERRAL_REGISTRY=0x...
 export DEPLOYED_WALLET_AUTH=0x...
 export DEPLOYED_EXECUTION_ROUTER=0x...
-# Optional: TREASURY_ADDRESS, PROTOCOL_FEE_BPS, REFERRAL_SPLIT_BPS (must match deploy)
 npm run verify
 ```
 
-## Security
-
-- **ReentrancyGuard** on execution paths.  
-- **Slippage** and **deadline** required on all swaps.  
-- **Pausable** and **owner** emergency controls.  
-- No `tx.origin`, no arbitrary `call()`.  
-- **SafeERC20** for all token transfers.  
-- **EIP-712** + nonce for delegate auth replay protection.
-
-## Events (indexed for analytics)
-
-- `TradeExecuted(user, executor, tokenIn, tokenOut, amountIn, amountOut, feeAmount, referralAmount, executionId)`  
-- `FeeCollected(token, from, amount, referralAmount)`  
-- `ReferralRegistered(user, referrer)`  
-- `ReferralRewardClaimed(referrer, token, amount, to)`  
-- `DelegateAuthorized(owner, delegate)`  
-- `DelegateRevoked(owner, delegate)`
+---
 
 ## Uniswap V3 integration
 
-- **Arbitrum Sepolia**: SwapRouter02 `0x101F443B4d1b059569D643917553c771E1b9663E`, WETH `0x980B62Da83eFf3D4576C6477b4381A595Fc7B639`.  
+- **Arbitrum Sepolia**: SwapRouter02 `0x101F443B4d1b059569D643917553c771E1b9663E`, WETH `0x980B62Da83eFf3D4576C647993b0c1D7faf17c73`.
 - **Arbitrum One**: SwapRouter02 `0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45`, WETH `0x82aF49447D8a07e3bd95BD0d56f35241523fBab1`.
 
-No mock routers in production; all swap execution uses the live Uniswap V3 router on the target chain.
+Production swap execution uses the live Uniswap V3 router on the target chain (no mock routers).
+
+---
+
+## Security
+
+- ReentrancyGuard on execution paths; slippage and deadline required on swaps.
+- Pausable and owner emergency controls; no tx.origin; no arbitrary call(); SafeERC20 for token transfers.
+- EIP-712 and nonce for delegate auth replay protection.
+- Execution engine: no private keys on server; only signed txs; nonce validation and reservation; API key for POST /rpc; rate limit per key.
+- Agents: non-custodial; signer stays in wallet/HSM; RiskGuard and PolicyEngine enforced before execution.
+
+---
+
+## Events (indexed for analytics)
+
+- TradeExecuted(user, executor, tokenIn, tokenOut, amountIn, amountOut, feeAmount, referralAmount, executionId)
+- FeeCollected(token, from, amount, referralAmount)
+- ReferralRegistered(user, referrer)
+- ReferralRewardClaimed(referrer, token, amount, to)
+- DelegateAuthorized(owner, delegate)
+- DelegateRevoked(owner, delegate)
+
+Vault, strategy, DAO, and agent contracts emit additional events; see respective ABIs and READMEs under `contracts/`.
