@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import {
   useAccount,
@@ -50,14 +51,15 @@ import {
   BUYBACK_MODULE_ABI,
   GOVERNANCE_EXECUTOR_ADAPTER_ABI,
 } from "./abis/phase4";
+import { TxStatusModal } from "./components/TxStatusModal";
 import "./App.css";
 
 type OutputToken = "WETH" | "USDC";
-type TabId = "swap" | "vault" | "strategy" | "dao" | "referral" | "delegate" | "protocol";
+type TabId = "swap" | "vault" | "strategy" | "dao" | "referral" | "delegate" | "agent" | "protocol";
 
 function App() {
   const [activeTab, setActiveTab] = useState<TabId>("swap");
-  const [routerAddress, setRouterAddress] = useState(DEFAULT_ROUTER);
+  const routerAddress = DEFAULT_ROUTER;
   const [amountEth, setAmountEth] = useState("0.001");
   const [outputToken, setOutputToken] = useState<OutputToken>("USDC");
   const [referrerAddress, setReferrerAddress] = useState("");
@@ -97,17 +99,21 @@ function App() {
   const [buyTokenId, setBuyTokenId] = useState("");
   const [affiliateAddress, setAffiliateAddress] = useState("");
   const [lookupStrategyAddress, setLookupStrategyAddress] = useState("");
-  const [regStrategy, setRegStrategy] = useState("");
+  const [regStrategy, setRegStrategy] = useState(VAULT);
   const [regCreator, setRegCreator] = useState("");
   const [regStrategyType, setRegStrategyType] = useState<"0" | "1">("0");
   const [regRiskLevel, setRegRiskLevel] = useState("0");
   const [regPerfHash, setRegPerfHash] = useState("");
   const [regMetadataURI, setRegMetadataURI] = useState("");
-  const [daoMaxDailySpend, setDaoMaxDailySpend] = useState("");
-  const [daoMaxSlippageBps, setDaoMaxSlippageBps] = useState("");
+  const DAO_DAILY_SPEND_OPTIONS = ["0.1", "0.25", "0.5", "1", "2", "5", "10"] as const;
+  const DAO_SLIPPAGE_BPS_OPTIONS = ["10", "50", "100", "200", "500"] as const;
+  const [daoMaxDailySpend, setDaoMaxDailySpend] = useState<string>(DAO_DAILY_SPEND_OPTIONS[3]); // 1 ETH
+  const [daoMaxSlippageBps, setDaoMaxSlippageBps] = useState<string>(DAO_SLIPPAGE_BPS_OPTIONS[2]); // 100 bps
   const [daoRuleIdHex, setDaoRuleIdHex] = useState("");
+  const [daoRuleIdDropdown, setDaoRuleIdDropdown] = useState<string>(""); // "" = custom, else selected rule id
   const [daoTriggerPayload, setDaoTriggerPayload] = useState("");
-  const [daoAdapterExecutor, setDaoAdapterExecutor] = useState("");
+  const [daoAdapterExecutor, setDaoAdapterExecutor] = useState(TREASURY_AUTOMATION_CONTROLLER);
+  const [txModalAction, setTxModalAction] = useState<string | null>(null);
 
   const { address, isConnected } = useAccount();
   const { data: ethBalance } = useBalance({ address });
@@ -116,12 +122,15 @@ function App() {
   const isCorrectChain = chainId === ARBITRUM_SEPOLIA.chainId;
   const { data: block } = useBlock({ blockTag: "pending" });
   const baseFee = block?.baseFeePerGas ?? 0n;
-  const maxFeePerGas = baseFee > 0n ? (baseFee * 150n) / 100n + 10n ** 9n : 100n * 10n ** 9n;
-  // Lower gas for Phase 3 (subscribe, list, claim) to avoid overpaying on Arbitrum
-  const strategyMaxFeePerGas = baseFee > 0n ? (baseFee * 110n) / 100n + 5n * 10n ** 8n : 30n * 10n ** 9n;
-  const strategyPriorityFee = 5n * 10n ** 8n;
-  // Marketplace buy/approve: must be >= base fee or tx reverts; use 20% over base + 0.1 gwei
-  const marketplaceMaxFeePerGas = baseFee > 0n ? (baseFee * 120n) / 100n + 10n ** 8n : 50n * 10n ** 9n;
+  // Arbitrum L2: cap gas to avoid RPC/baseFee quirks causing 40k+ ETH fee display (max 2 gwei on Arbitrum Sepolia)
+  const ARB_GAS_CAP = 2n * 10n ** 9n; // 2 gwei
+  const rawMaxFeePerGas = baseFee > 0n ? (baseFee * 150n) / 100n + 10n ** 9n : 100n * 10n ** 9n;
+  const maxFeePerGas = isCorrectChain && rawMaxFeePerGas > ARB_GAS_CAP ? ARB_GAS_CAP : rawMaxFeePerGas;
+  const rawStrategyMax = baseFee > 0n ? (baseFee * 110n) / 100n + 5n * 10n ** 8n : 30n * 10n ** 9n;
+  const strategyMaxFeePerGas = isCorrectChain && rawStrategyMax > ARB_GAS_CAP ? ARB_GAS_CAP : rawStrategyMax;
+  const strategyPriorityFee = 5n * 10n ** 8n; // 0.5 gwei
+  const rawMarketplaceMax = baseFee > 0n ? (baseFee * 120n) / 100n + 10n ** 8n : 50n * 10n ** 9n;
+  const marketplaceMaxFeePerGas = isCorrectChain && rawMarketplaceMax > ARB_GAS_CAP ? ARB_GAS_CAP : rawMarketplaceMax;
   const marketplacePriorityFee = 10n ** 8n;
 
   const routerAddressChecksummed =
@@ -321,6 +330,19 @@ function App() {
     functionName: "totalFeesCollected",
     args: [getAddress(ARBITRUM_SEPOLIA.usdc)],
   });
+  const feeManagerAddressHex = FEE_MANAGER as `0x${string}`;
+  const { data: feeManagerWethBalance = 0n } = useReadContract({
+    address: getAddress(ARBITRUM_SEPOLIA.weth) as `0x${string}`,
+    abi: ERC20_ABI,
+    functionName: "balanceOf",
+    args: [feeManagerAddressHex],
+  });
+  const { data: feeManagerUsdcBalance = 0n } = useReadContract({
+    address: getAddress(ARBITRUM_SEPOLIA.usdc) as `0x${string}`,
+    abi: ERC20_ABI,
+    functionName: "balanceOf",
+    args: [feeManagerAddressHex],
+  });
   const { data: treasuryEthBalance } = useBalance({ address: treasuryAddressHex });
   const { data: treasuryWethBalance = 0n } = useReadContract({
     address: getAddress(ARBITRUM_SEPOLIA.weth) as `0x${string}`,
@@ -487,7 +509,7 @@ function App() {
   const { data: riskGuardOwner } = useReadContract({ address: riskGuardAddress, abi: RISK_GUARD_ABI, functionName: "owner" });
   const { data: riskGuardPaused = false } = useReadContract({ address: riskGuardAddress, abi: RISK_GUARD_ABI, functionName: "paused" });
   const { data: policyRuleIds = [] } = useReadContract({ address: policyEngineAddress, abi: POLICY_ENGINE_ABI, functionName: "getRuleIds" });
-  const { data: policyEngineOwner } = useReadContract({ address: policyEngineAddress, abi: POLICY_ENGINE_ABI, functionName: "owner" });
+  useReadContract({ address: policyEngineAddress, abi: POLICY_ENGINE_ABI, functionName: "owner" });
   const { data: controllerTreasury } = useReadContract({ address: controllerAddress, abi: TREASURY_AUTOMATION_CONTROLLER_ABI, functionName: "treasury" });
   const { data: controllerExposureUsdc = 0n } = useReadContract({ address: controllerAddress, abi: TREASURY_AUTOMATION_CONTROLLER_ABI, functionName: "exposureByToken", args: [usdcAddress] });
   const { data: controllerExposureWeth = 0n } = useReadContract({ address: controllerAddress, abi: TREASURY_AUTOMATION_CONTROLLER_ABI, functionName: "exposureByToken", args: [getAddress(ARBITRUM_SEPOLIA.weth) as `0x${string}`] });
@@ -497,7 +519,6 @@ function App() {
   const { data: adapterExecutor } = useReadContract({ address: adapterAddress, abi: GOVERNANCE_EXECUTOR_ADAPTER_ABI, functionName: "executor" });
   const { data: adapterOwner } = useReadContract({ address: adapterAddress, abi: GOVERNANCE_EXECUTOR_ADAPTER_ABI, functionName: "owner" });
   const isRiskGuardOwner = address != null && riskGuardOwner != null && address.toLowerCase() === (riskGuardOwner as string).toLowerCase();
-  const isPolicyEngineOwner = address != null && policyEngineOwner != null && address.toLowerCase() === (policyEngineOwner as string).toLowerCase();
   const isControllerOwner = address != null && controllerOwner != null && address.toLowerCase() === (controllerOwner as string).toLowerCase();
   const isBuybackModuleOwner = address != null && buybackModuleOwner != null && address.toLowerCase() === (buybackModuleOwner as string).toLowerCase();
   const isAdapterOwner = address != null && adapterOwner != null && address.toLowerCase() === (adapterOwner as string).toLowerCase();
@@ -611,6 +632,7 @@ function App() {
     const tokenAddress =
       withdrawToken === "WETH" ? getAddress(ARBITRUM_SEPOLIA.weth) : getAddress(ARBITRUM_SEPOLIA.usdc);
     const decimals = withdrawToken === "WETH" ? 18 : 6;
+    const maxAvailable = withdrawToken === "WETH" ? feeManagerWethBalance : feeManagerUsdcBalance;
     let amount: bigint;
     try {
       amount = decimals === 18 ? parseEther(withdrawAmount) : parseUnits(withdrawAmount, 6);
@@ -618,20 +640,23 @@ function App() {
       return;
     }
     if (amount <= 0n) return;
+    if (amount > maxAvailable) return; // would revert with ERC20: transfer amount exceeds balance
     setTreasurySnapshotBefore({
       eth: treasuryEthBalance?.value != null ? formatEther(treasuryEthBalance.value) : "0",
       weth: formatEther(treasuryWethBalance),
       usdc: formatUnits(treasuryUsdcBalance, 6),
     });
     withdrawPendingRef.current = true;
+    setTxModalAction("Withdraw fees to treasury");
     resetWrite();
     writeContract({
       address: FEE_MANAGER as `0x${string}`,
       abi: FEE_MANAGER_ABI,
       functionName: "withdrawToTreasury",
       args: [tokenAddress, amount],
+      gas: 300000n,
       maxFeePerGas,
-      maxPriorityFeePerGas: maxFeePerGas / 10n,
+      maxPriorityFeePerGas: maxFeePerGas > 10n ? maxFeePerGas / 10n : 10n ** 8n,
     });
   };
 
@@ -640,6 +665,7 @@ function App() {
     try {
       const referrer = getAddress(referrerAddress.trim());
       if (referrer === address) return;
+      setTxModalAction("Register referrer");
       resetWrite();
       writeContract({
         address: REFERRAL_REGISTRY as `0x${string}`,
@@ -657,6 +683,7 @@ function App() {
   const claimReferralRewards = () => {
     if (!address) return;
     claimPendingRef.current = true;
+    setTxModalAction("Claim referral rewards");
     resetWrite();
     writeContract({
       address: REFERRAL_REGISTRY as `0x${string}`,
@@ -689,6 +716,7 @@ function App() {
     const message = { owner: address, delegate: delegateChecksummed, nonce, deadline };
     try {
       const signature = await signTypedDataAsync({ domain, types, primaryType: "DelegateAuthorization", message });
+      setTxModalAction("Authorize delegate");
       resetWrite();
       writeContract({
         address: WALLET_AUTH as `0x${string}`,
@@ -705,6 +733,7 @@ function App() {
 
   const revokeDelegate = () => {
     if (!delegateChecksummed) return;
+    setTxModalAction("Revoke delegate");
     resetWrite();
     writeContract({
       address: WALLET_AUTH as `0x${string}`,
@@ -720,6 +749,7 @@ function App() {
     if (!delegateSwapParams || !routerAddressChecksummed || !ownerAddressChecksummed) return;
     delegateExecutionPendingRef.current = true;
     setLastDelegateResult("Pending...");
+    setTxModalAction("Execute as delegate");
     resetWrite();
     writeContract({
       address: routerAddressChecksummed,
@@ -750,6 +780,7 @@ function App() {
 
   const executeSwap = () => {
     if (!swapParams || !routerAddressChecksummed) return;
+    setTxModalAction("Execute swap");
     resetWrite();
     writeContract({
       address: routerAddressChecksummed,
@@ -774,6 +805,7 @@ function App() {
     try {
       const amount = parseUnits(vaultDepositAmount || "0", 6);
       if (amount <= 0n) return;
+      setTxModalAction("Approve vault asset");
       resetWrite();
       writeContract({
         address: vaultAsset,
@@ -793,6 +825,7 @@ function App() {
     try {
       const assets = parseUnits(vaultDepositAmount || "0", 6);
       if (assets <= 0n) return;
+      setTxModalAction("Vault deposit");
       resetWrite();
       writeContract({
         address: vaultAddress,
@@ -812,6 +845,7 @@ function App() {
     try {
       const assets = parseUnits(vaultWithdrawAmount || "0", 6);
       if (assets <= 0n) return;
+      setTxModalAction("Vault withdraw");
       resetWrite();
       writeContract({
         address: vaultAddress,
@@ -831,6 +865,7 @@ function App() {
     try {
       const shares = parseUnits(vaultRedeemAmount || "0", 6);
       if (shares <= 0n) return;
+      setTxModalAction("Vault redeem");
       resetWrite();
       writeContract({
         address: vaultAddress,
@@ -847,6 +882,7 @@ function App() {
 
   const vaultHarvest = () => {
     if (!vaultAddress) return;
+    setTxModalAction("Vault harvest");
     resetWrite();
     writeContract({
       address: vaultAddress,
@@ -862,6 +898,7 @@ function App() {
     try {
       const amount = parseUnits(subAmount || "0", 6);
       if (amount <= 0n) return;
+      setTxModalAction("Approve USDC for subscription");
       resetWrite();
       writeContract({
         address: usdcAddress,
@@ -882,6 +919,7 @@ function App() {
       const durationSeconds = BigInt(Math.floor(Number(subDurationDays) * 86400));
       const amount = parseUnits(subAmount || "0", 6);
       if (durationSeconds <= 0n || amount <= 0n) return;
+      setTxModalAction("Subscribe to strategy");
       resetWrite();
       writeContract({
         address: subscriptionManagerAddress,
@@ -898,6 +936,7 @@ function App() {
 
   const approveNftForMarketplace = () => {
     if (!address) return;
+    setTxModalAction("Approve NFT for marketplace");
     resetWrite();
     writeContract({
       address: strategyNftAddress,
@@ -915,6 +954,7 @@ function App() {
       const tokenId = BigInt(listTokenId.trim());
       const price = parseUnits(listPrice.trim(), 6);
       if (price <= 0n) return;
+      setTxModalAction("List strategy NFT");
       resetWrite();
       writeContract({
         address: marketplaceAddress,
@@ -933,6 +973,7 @@ function App() {
     if (!address || listTokenId.trim() === "") return;
     try {
       const tokenId = BigInt(listTokenId.trim());
+      setTxModalAction("Cancel strategy listing");
       resetWrite();
       writeContract({
         address: marketplaceAddress,
@@ -949,6 +990,7 @@ function App() {
 
   const approvePaymentForBuy = () => {
     if (!address || listingPrice == null || !listingPaymentTokenAddress) return;
+    setTxModalAction("Approve payment for buy");
     resetWrite();
     writeContract({
       address: listingPaymentTokenAddress,
@@ -966,6 +1008,7 @@ function App() {
     const affiliate = affiliateAddress.trim() && /^0x[a-fA-F0-9]{40}$/.test(affiliateAddress.trim())
       ? getAddress(affiliateAddress.trim()) as `0x${string}`
       : zeroAddress;
+    setTxModalAction("Buy strategy NFT");
     resetWrite();
     writeContract({
       address: marketplaceAddress,
@@ -980,6 +1023,7 @@ function App() {
 
   const claimRoyalties = () => {
     if (!address) return;
+    setTxModalAction("Claim royalties");
     resetWrite();
     writeContract({
       address: royaltyDistributorAddress,
@@ -1005,6 +1049,7 @@ function App() {
         perfHash = (`0x${h.padEnd(64, "0").slice(0, 64)}` as `0x${string}`);
       } else return;
       const metadataURI = regMetadataURI.trim() || " ";
+      setTxModalAction("Register strategy");
       resetWrite();
       writeContract({
         address: registryAddress,
@@ -1023,6 +1068,7 @@ function App() {
     try {
       const amount = parseEther(daoMaxDailySpend || "0");
       if (amount === 0n) return;
+      setTxModalAction("Set max daily spend");
       resetWrite();
       writeContract({ address: riskGuardAddress, abi: RISK_GUARD_ABI, functionName: "setMaxDailySpend", args: [amount], maxFeePerGas: strategyMaxFeePerGas, maxPriorityFeePerGas: strategyPriorityFee });
     } catch { /* invalid */ }
@@ -1031,23 +1077,28 @@ function App() {
     try {
       const bps = BigInt(daoMaxSlippageBps || "0");
       if (bps === 0n) return;
+      setTxModalAction("Set max slippage");
       resetWrite();
       writeContract({ address: riskGuardAddress, abi: RISK_GUARD_ABI, functionName: "setMaxSlippageBps", args: [bps], maxFeePerGas: strategyMaxFeePerGas, maxPriorityFeePerGas: strategyPriorityFee });
     } catch { /* invalid */ }
   };
   const daoRiskGuardPause = () => {
+    setTxModalAction("Pause RiskGuard");
     resetWrite();
     writeContract({ address: riskGuardAddress, abi: RISK_GUARD_ABI, functionName: "pause", maxFeePerGas: strategyMaxFeePerGas, maxPriorityFeePerGas: strategyPriorityFee });
   };
   const daoRiskGuardUnpause = () => {
+    setTxModalAction("Unpause RiskGuard");
     resetWrite();
     writeContract({ address: riskGuardAddress, abi: RISK_GUARD_ABI, functionName: "unpause", maxFeePerGas: strategyMaxFeePerGas, maxPriorityFeePerGas: strategyPriorityFee });
   };
   const daoTriggerRule = () => {
-    if (!daoRuleIdHex.trim()) return;
+    const effectiveRuleId = (daoRuleIdDropdown || daoRuleIdHex).trim();
+    if (!effectiveRuleId) return;
     try {
-      const ruleId = daoRuleIdHex.trim().startsWith("0x") ? (daoRuleIdHex.trim() as `0x${string}`) : (`0x${daoRuleIdHex.trim().padStart(64, "0").slice(-64)}` as `0x${string}`);
+      const ruleId = effectiveRuleId.startsWith("0x") ? (effectiveRuleId as `0x${string}`) : (`0x${effectiveRuleId.padStart(64, "0").slice(-64)}` as `0x${string}`);
       const payload = daoTriggerPayload.trim().startsWith("0x") ? (daoTriggerPayload.trim() as `0x${string}`) : ("0x" as `0x${string}`);
+      setTxModalAction("Trigger rule");
       resetWrite();
       writeContract({ address: policyEngineAddress, abi: POLICY_ENGINE_ABI, functionName: "triggerRule", args: [ruleId, payload], maxFeePerGas: strategyMaxFeePerGas, maxPriorityFeePerGas: strategyPriorityFee });
     } catch { /* invalid */ }
@@ -1055,6 +1106,7 @@ function App() {
   const daoSetAdapterExecutor = () => {
     try {
       const executor = getAddress(daoAdapterExecutor.trim()) as `0x${string}`;
+      setTxModalAction("Set adapter executor");
       resetWrite();
       writeContract({ address: adapterAddress, abi: GOVERNANCE_EXECUTOR_ADAPTER_ABI, functionName: "setExecutor", args: [executor], maxFeePerGas: strategyMaxFeePerGas, maxPriorityFeePerGas: strategyPriorityFee });
     } catch { /* invalid */ }
@@ -1073,35 +1125,60 @@ function App() {
     return "";
   }, [writeError, isSwapPending, txHash]);
 
+  const txModalStatus: "pending" | "success" | "error" =
+    isSwapPending ? "pending" : writeError ? "error" : txHash ? "success" : "pending";
+  const txModalError =
+    writeError != null
+      ? (writeError as { shortMessage?: string }).shortMessage ??
+        (writeError as Error).message ??
+        String(writeError)
+      : null;
+
   return (
-    <div className="app">
-      <h1>Real Swap Demo</h1>
-      <p className="sub">Arbitrum Sepolia · ETH → WETH or USDC</p>
+    <div className="mx-auto max-w-3xl px-4 py-8 bg-[#0a0a0f] text-zinc-100">
+      <h1 className="mb-1 text-2xl font-bold text-white">Vacuum</h1>
+      <p className="mb-2 text-sm text-zinc-400">Arbitrum Sepolia · Swap, vault, strategies &amp; more</p>
+      <p className="mb-6 text-xs">
+        <Link to="/how" className="text-[#22d3ee] hover:underline">How to use</Link>
+        {" · "}
+        <Link to="/why" className="text-[#22d3ee] hover:underline">Why we&apos;re the fastest</Link>
+      </p>
 
       {!isConnected ? (
-        <ConnectButton />
+        <div className="rounded-xl border border-[#1e1e2e] bg-[#12121a] p-6 text-center">
+          <p className="mb-4 text-zinc-300">Connect your wallet to use the app.</p>
+          <ConnectButton />
+        </div>
       ) : (
         <>
-          <div className="row row-account">
-            <div>
-              <span className="label">Account</span>
-              <span className="value">{` ${address?.slice(0, 6)}...${address?.slice(-4)}`}</span>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <div className="text-sm">
+              <span className="text-zinc-400">Account</span>
+              <span className="ml-1 font-mono text-white">{`${address?.slice(0, 6)}...${address?.slice(-4)}`}</span>
             </div>
-            <button type="button" className="btn secondary btn-sm" onClick={() => disconnect()}>
+            <button
+              type="button"
+              className="rounded-lg border border-[#1e1e2e] bg-[#12121a] px-3 py-1.5 text-sm text-zinc-300 transition hover:bg-zinc-800 hover:text-white"
+              onClick={() => disconnect()}
+            >
               Disconnect
             </button>
           </div>
           {!isCorrectChain && (
-            <p className="status">
+            <p className="mb-4 rounded-lg bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
               Switch to Arbitrum Sepolia in your wallet (Rainbow).
             </p>
           )}
-          <div className="tabs">
-            {(["swap", "vault", "strategy", "dao", "referral", "delegate", "protocol"] as TabId[]).map((tab) => (
+          <div className="mb-6 flex flex-wrap gap-1">
+            {(["swap", "vault", "strategy", "dao", "referral", "delegate", "agent", "protocol"] as TabId[]).map((tab) => (
               <button
                 key={tab}
                 type="button"
-                className={`tab ${activeTab === tab ? "active" : ""}`}
+                className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                  activeTab === tab
+                    ? "bg-[#0891b2] text-white"
+                    : "border border-[#1e1e2e] bg-[#12121a] text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                }`}
                 onClick={() => setActiveTab(tab)}
               >
                 {tab.charAt(0).toUpperCase() + tab.slice(1)}
@@ -1122,11 +1199,8 @@ function App() {
           )}
           <div className="field">
             <label>ExecutionRouter address</label>
-            <input
-              value={routerAddress}
-              onChange={(e) => setRouterAddress(e.target.value)}
-              placeholder="0x..."
-            />
+            <p className="value font-mono text-sm text-zinc-400 break-all">{DEFAULT_ROUTER}</p>
+            <p className="text-xs text-zinc-500 mt-1">Locked</p>
           </div>
           <div className="field">
             <label>Output token</label>
@@ -1295,7 +1369,7 @@ function App() {
                   <div className="field">
                     <label>Register strategy (owner only)</label>
                     <p className="hint">Mints a Strategy NFT to the creator. Only the registry owner can call this.</p>
-                    <input placeholder="Strategy contract address (0x...)" value={regStrategy} onChange={(e) => setRegStrategy(e.target.value)} />
+                    <input placeholder="Strategy contract address (0x...)" value={regStrategy} readOnly className="cursor-not-allowed opacity-90" aria-label="Strategy contract address (locked)" />
                     <input placeholder="Creator address (NFT recipient, 0x...)" value={regCreator} onChange={(e) => setRegCreator(e.target.value)} />
                     <div className="row">
                       <label className="label">Strategy type</label>
@@ -1392,7 +1466,7 @@ function App() {
           )}
           {activeTab === "dao" && (
             <div className="panel">
-              <h3>DAO Automation (Phase 4)</h3>
+              <h3>DAO Automation</h3>
               <p className="sub">RiskGuard, PolicyEngine, Treasury Controller, Buyback, Governance Adapter.</p>
               <div className="field">
                 <label>RiskGuard</label>
@@ -1402,8 +1476,22 @@ function App() {
                 <div className="row"><span className="label">Paused</span><span className="value">{riskGuardPaused ? "Yes" : "No"}</span></div>
                 {address && isRiskGuardOwner && (
                   <>
-                    <input placeholder="Max daily spend (ETH)" value={daoMaxDailySpend} onChange={(e) => setDaoMaxDailySpend(e.target.value)} />
-                    <input placeholder="Max slippage (bps)" value={daoMaxSlippageBps} onChange={(e) => setDaoMaxSlippageBps(e.target.value)} />
+                    <div className="row">
+                      <label className="label">Max daily spend (ETH)</label>
+                      <select value={daoMaxDailySpend} onChange={(e) => setDaoMaxDailySpend(e.target.value)} className="select">
+                        {DAO_DAILY_SPEND_OPTIONS.map((opt) => (
+                          <option key={opt} value={opt}>{opt} ETH</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="row">
+                      <label className="label">Max slippage (bps)</label>
+                      <select value={daoMaxSlippageBps} onChange={(e) => setDaoMaxSlippageBps(e.target.value)} className="select">
+                        {DAO_SLIPPAGE_BPS_OPTIONS.map((opt) => (
+                          <option key={opt} value={opt}>{opt} bps</option>
+                        ))}
+                      </select>
+                    </div>
                     <div className="row row-actions">
                       <button type="button" className="btn secondary" onClick={daoSetMaxDailySpend} disabled={isSwapPending || !daoMaxDailySpend}>Set daily spend</button>
                       <button type="button" className="btn secondary" onClick={daoSetMaxSlippageBps} disabled={isSwapPending || !daoMaxSlippageBps}>Set slippage</button>
@@ -1417,9 +1505,20 @@ function App() {
                 <div className="row"><span className="label">Rules</span><span className="value">{(policyRuleIds as string[]).length}</span></div>
                 {address && (
                   <>
-                    <input placeholder="Rule ID (0x...64 hex)" value={daoRuleIdHex} onChange={(e) => setDaoRuleIdHex(e.target.value)} />
+                    <div className="row">
+                      <label className="label">Rule ID</label>
+                      <select value={daoRuleIdDropdown} onChange={(e) => { const v = e.target.value; setDaoRuleIdDropdown(v); if (v !== "") setDaoRuleIdHex(v); }} className="select">
+                        <option value="">Custom (enter below)</option>
+                        {(policyRuleIds as string[]).map((ruleId) => (
+                          <option key={ruleId} value={ruleId}>{`${ruleId.slice(0, 10)}...${ruleId.slice(-8)}`}</option>
+                        ))}
+                      </select>
+                    </div>
+                    {daoRuleIdDropdown === "" && (
+                      <input placeholder="Rule ID (0x...64 hex)" value={daoRuleIdHex} onChange={(e) => { setDaoRuleIdHex(e.target.value); setDaoRuleIdDropdown(""); }} />
+                    )}
                     <input placeholder="Payload (0x or leave empty)" value={daoTriggerPayload} onChange={(e) => setDaoTriggerPayload(e.target.value)} />
-                    <button type="button" className="btn secondary" onClick={daoTriggerRule} disabled={isSwapPending || !daoRuleIdHex}>Trigger rule</button>
+                    <button type="button" className="btn secondary" onClick={daoTriggerRule} disabled={isSwapPending || !(daoRuleIdDropdown || daoRuleIdHex).trim()}>Trigger rule</button>
                   </>
                 )}
               </div>
@@ -1442,7 +1541,12 @@ function App() {
                 <div className="row"><span className="label">Executor</span><span className="value">{(adapterExecutor as string)?.slice(0, 10)}…</span></div>
                 {address && isAdapterOwner && (
                   <>
-                    <input placeholder="Executor address (0x...)" value={daoAdapterExecutor} onChange={(e) => setDaoAdapterExecutor(e.target.value)} />
+                    <div className="row">
+                      <label className="label">Executor</label>
+                      <select value={daoAdapterExecutor} onChange={(e) => setDaoAdapterExecutor(e.target.value)} className="select">
+                        <option value={TREASURY_AUTOMATION_CONTROLLER}>Treasury Automation Controller ({TREASURY_AUTOMATION_CONTROLLER.slice(0, 6)}...{TREASURY_AUTOMATION_CONTROLLER.slice(-4)})</option>
+                      </select>
+                    </div>
                     <button type="button" className="btn secondary" onClick={daoSetAdapterExecutor} disabled={isSwapPending || !daoAdapterExecutor.trim()}>Set executor</button>
                   </>
                 )}
@@ -1452,7 +1556,7 @@ function App() {
           )}
           {activeTab === "referral" && (
             <div className="panel">
-              <h3>Referral flow (1 → 2 → 3 → 4 → 5)</h3>
+              <h3>Referral</h3>
               <div className="flow-section">
                 <button type="button" className="btn secondary btn-sm" onClick={recordBalancesBefore}>
                   Record balances (before)
@@ -1600,7 +1704,7 @@ function App() {
           )}
           {activeTab === "delegate" && (
             <div className="panel">
-              <h3>Delegate flow (1 → 2 → 3 → 4 → 5)</h3>
+              <h3>Delegate</h3>
               <div className="flow-section">
                 <strong>1. Sign EIP-712 authorization</strong>
                 <p className="hint">As owner: sign to authorize a delegate. Your wallet will prompt for EIP-712 typed data signature.</p>
@@ -1691,39 +1795,109 @@ function App() {
               </div>
             </div>
           )}
+          {activeTab === "agent" && (
+            <div className="panel">
+              <h3>Agents</h3>
+              <p className="sub">Non-custodial automation: strategy, vault, and DAO agents use the SDK and respect RiskGuard and PolicyEngine. They never hold your keys.</p>
+
+              <div className="flow-section">
+                <strong>Docs &amp; SDK</strong>
+                <p className="hint">Agent registry (register, stake, subscribe, claim revenue) and automation framework.</p>
+                <ul className="mb-2 list-inside list-disc text-sm text-zinc-400">
+                  <li><Link to="/docs/sdk/agents" className="text-[#22d3ee] hover:underline">SDK: Agents</Link> — registerAgent, getAgentMetadata, stakeAgent, subscribeToAgent, claimAgentRevenue</li>
+                  <li><Link to="/docs/guides/examples" className="text-[#22d3ee] hover:underline">Guides: Examples</Link> — code samples including agent registration</li>
+                </ul>
+              </div>
+
+              <div className="flow-section">
+                <strong>Run automation agents</strong>
+                <p className="hint">StrategyAgent, VaultAgent, and DaoAutomationAgent run in Node or Docker. They call the SDK with your signer; set env and run from the repo.</p>
+                <div className="field">
+                  <label>Environment</label>
+                  <p className="value small font-mono">RPC_URL, CHAIN_ID, PRIVATE_KEY, DRY_RUN, LOG_LEVEL</p>
+                  <p className="value small">Optional: RULE_ID, VAULT_ADDRESS, STRATEGY_TOKEN_ID</p>
+                </div>
+                <div className="field">
+                  <label>Quick run (from repo root)</label>
+                  <p className="value small font-mono break-all">docker build -f packages/agent/Dockerfile .</p>
+                  <p className="value small mt-1">Or: PRIVATE_KEY=0x... npx ts-node packages/agent/examples/SimpleBuybackBot.ts</p>
+                </div>
+              </div>
+
+              <div className="flow-section">
+                <strong>Agent contracts</strong>
+                <p className="hint">Deployed on Arbitrum Sepolia; use SDK or integrate when ready.</p>
+                <div className="row"><span className="label">AgentRegistry</span><span className="value small font-mono">0xC9C3…f80d</span></div>
+                <div className="row"><span className="label">AgentRevenueDistributor</span><span className="value small font-mono">0x5FeA…4136</span></div>
+                <div className="row"><span className="label">AgentSubscriptionManager</span><span className="value small font-mono">0x37b4…F2f9</span></div>
+              </div>
+            </div>
+          )}
           {activeTab === "protocol" && (
             <div className="panel">
               <h3>Protocol info</h3>
               <div className="row"><span className="label">Protocol fee</span><span className="value">{protocolFeeBps != null ? Number(protocolFeeBps) / 100 : "—"}%</span></div>
               <div className="row"><span className="label">Referral split (of fee)</span><span className="value">{referralSplitBps != null ? Number(referralSplitBps) / 100 : "—"}%</span></div>
-              <div className="row"><span className="label">Treasury</span><span className="value">{treasuryAddress ? `${String(treasuryAddress).slice(0, 10)}…` : "—"}</span></div>
+              <div className="row"><span className="label">Treasury</span><span className="value small" style={{ wordBreak: "break-all" }}>{treasuryAddress ? String(treasuryAddress) : "—"}</span></div>
 
               <div className="flow-section">
-                <strong>1. Query total fees collected</strong>
-                <p className="hint">Cumulative fees recorded by FeeManager (WETH and USDC).</p>
-                <div className="row"><span className="label">Total fees (WETH)</span><span className="value">{formatEther(totalFeesWeth)}</span></div>
-                <div className="row"><span className="label">Total fees (USDC)</span><span className="value">{formatUnits(totalFeesUsdc, 6)}</span></div>
+                <strong>1. FeeManager balances</strong>
+                <p className="hint">Cumulative fees recorded (for display): WETH {formatEther(totalFeesWeth)}, USDC {formatUnits(totalFeesUsdc, 6)}. Swap fees are sent <strong>directly to the treasury</strong> on each trade. The FeeManager contract only holds tokens if someone sent them to it; that balance is what you can withdraw below.</p>
+                <div className="row"><span className="label">FeeManager WETH balance</span><span className="value">{formatEther(feeManagerWethBalance)}</span></div>
+                <div className="row"><span className="label">FeeManager USDC balance</span><span className="value">{formatUnits(feeManagerUsdcBalance, 6)}</span></div>
               </div>
 
               <div className="flow-section">
                 <strong>2. Withdraw fees to treasury</strong>
-                <p className="hint">Send accumulated fees from FeeManager to the treasury address. Only FeeManager owner can call this.</p>
+                <p className="hint">Send tokens <strong>held by the FeeManager contract</strong> to the treasury. Only FeeManager owner can call this. No approval needed — you are moving the contract&apos;s own balance.</p>
                 <select value={withdrawToken} onChange={(e) => setWithdrawToken(e.target.value as "WETH" | "USDC")} className="select">
                   <option value="WETH">WETH</option>
                   <option value="USDC">USDC</option>
                 </select>
-                <label>Amount {withdrawToken === "WETH" ? "(WETH)" : "(USDC)"}</label>
-                <input
-                  type="text"
-                  value={withdrawAmount}
-                  onChange={(e) => setWithdrawAmount(e.target.value)}
-                  placeholder={withdrawToken === "WETH" ? formatEther(totalFeesWeth) : formatUnits(totalFeesUsdc, 6)}
-                />
+                <label>Amount {withdrawToken === "WETH" ? "(WETH)" : "(USDC)"} — available in FeeManager: {withdrawToken === "WETH" ? formatEther(feeManagerWethBalance) : formatUnits(feeManagerUsdcBalance, 6)}</label>
+                <div className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+                  <input
+                    type="text"
+                    value={withdrawAmount}
+                    onChange={(e) => setWithdrawAmount(e.target.value)}
+                    placeholder={withdrawToken === "WETH" ? formatEther(feeManagerWethBalance) : formatUnits(feeManagerUsdcBalance, 6)}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-sm secondary"
+                    onClick={() => setWithdrawAmount(withdrawToken === "WETH" ? formatEther(feeManagerWethBalance) : formatUnits(feeManagerUsdcBalance, 6))}
+                  >
+                    Max
+                  </button>
+                </div>
+                {(() => {
+                  let parsed: bigint | null = null;
+                  try {
+                    parsed = withdrawToken === "WETH" ? parseEther(withdrawAmount) : parseUnits(withdrawAmount, 6);
+                  } catch {
+                    /* invalid */
+                  }
+                  const maxAvail = withdrawToken === "WETH" ? feeManagerWethBalance : feeManagerUsdcBalance;
+                  const exceeds = parsed != null && parsed > 0n && parsed > maxAvail;
+                  return exceeds ? <p className="status">Amount exceeds FeeManager balance. Use Max or enter a smaller amount.</p> : null;
+                })()}
                 <button
                   type="button"
                   className="btn primary"
                   onClick={withdrawFeesToTreasury}
-                  disabled={!withdrawAmount.trim() || isSwapPending}
+                  disabled={
+                    !withdrawAmount.trim() ||
+                    isSwapPending ||
+                    (() => {
+                      try {
+                        const amt = withdrawToken === "WETH" ? parseEther(withdrawAmount) : parseUnits(withdrawAmount, 6);
+                        const maxAvail = withdrawToken === "WETH" ? feeManagerWethBalance : feeManagerUsdcBalance;
+                        return amt <= 0n || amt > maxAvail;
+                      } catch {
+                        return true;
+                      }
+                    })()
+                  }
                 >
                   Withdraw to treasury
                 </button>
@@ -1764,6 +1938,7 @@ function App() {
 
               <div className="field">
                 <label>Contract addresses</label>
+                <p className="value small">Treasury: {treasuryAddress ?? "—"}</p>
                 <p className="value small">Router: {DEFAULT_ROUTER}</p>
                 <p className="value small">Referral: {REFERRAL_REGISTRY}</p>
                 <p className="value small">WalletAuth: {WALLET_AUTH}</p>
@@ -1792,6 +1967,16 @@ function App() {
           View on Explorer
         </a>
       )}
+
+      <TxStatusModal
+        open={txModalAction != null}
+        onClose={() => setTxModalAction(null)}
+        actionLabel={txModalAction ?? ""}
+        status={txModalStatus}
+        txHash={txHash ?? undefined}
+        errorMessage={txModalError}
+        explorerBaseUrl={ARBITRUM_SEPOLIA.explorer}
+      />
     </div>
   );
 }

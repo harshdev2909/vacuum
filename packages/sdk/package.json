@@ -1,0 +1,59 @@
+{
+  "name": "vacuum-sdk",
+  "version": "1.0.2",
+  "description": "TypeScript SDK for Vacuum protocol — execution, vaults, strategies, DAO automation, and agents on Arbitrum",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "API.md"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts --clean",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/harshdev2909/vacuum.git",
+    "directory": "packages/sdk"
+  },
+  "homepage": "https://github.com/harshdev2909/vacuum#readme",
+  "bugs": {
+    "url": "https://github.com/harshdev2909/vacuum/issues"
+  },
+  "keywords": [
+    "vacuum",
+    "arbitrum",
+    "defi",
+    "sdk",
+    "ethers",
+    "swap",
+    "vault",
+    "erc-4626"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "ethers": "^6.0.0"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "ethers": "^6.13.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "sideEffects": false
+}
