@@ -99,7 +99,7 @@ function App() {
   const [buyTokenId, setBuyTokenId] = useState("");
   const [affiliateAddress, setAffiliateAddress] = useState("");
   const [lookupStrategyAddress, setLookupStrategyAddress] = useState("");
-  const [regStrategy, setRegStrategy] = useState(VAULT);
+  const [regStrategy] = useState(VAULT);
   const [regCreator, setRegCreator] = useState("");
   const [regStrategyType, setRegStrategyType] = useState<"0" | "1">("0");
   const [regRiskLevel, setRegRiskLevel] = useState("0");
