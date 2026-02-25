@@ -45,29 +45,29 @@ Standards: ERC-20 (tokens), ERC-4626 (vaults), ERC-721/ERC-2981 (strategy NFTs),
 
 ## Contract addresses and deployed links
 
-All contracts below are deployed on **Arbitrum Sepolia** (chain ID 421614). Links point to [Arbiscan Arbitrum Sepolia](https://arbitrum-sepolia.arbiscan.io).
+All contracts below are deployed on **Arbitrum Sepolia** (chain ID 421614). Links point to [Arbiscan Arbitrum Sepolia](https://sepolia.arbiscan.io/).
 
-| Contract | Address | Deployed link |
-|----------|---------|----------------|
-| ExecutionRouter | `0xe5f2CFeD1441010a3f79fF904dea7b09e9Ef2a8C` | [View](https://arbitrum-sepolia.arbiscan.io/address/0xe5f2CFeD1441010a3f79fF904dea7b09e9Ef2a8C) |
-| FeeManager | `0x2f42a9F31FdDC4B882D29e7A9Ff3712f4706Bc67` | [View](https://arbitrum-sepolia.arbiscan.io/address/0x2f42a9F31FdDC4B882D29e7A9Ff3712f4706Bc67) |
-| ReferralRegistry | `0x673d380C14E9031dD3835976805a99579c679Caa` | [View](https://arbitrum-sepolia.arbiscan.io/address/0x673d380C14E9031dD3835976805a99579c679Caa) |
-| WalletAuthorization | `0x3d5Ca0C49c3C92b6D7619112cC071357C2DFD0AF` | [View](https://arbitrum-sepolia.arbiscan.io/address/0x3d5Ca0C49c3C92b6D7619112cC071357C2DFD0AF) |
-| VaultFactory | `0x556C7b4d4EFBCd6fea9fc93498946fB63fFADA55` | [View](https://arbitrum-sepolia.arbiscan.io/address/0x556C7b4d4EFBCd6fea9fc93498946fB63fFADA55) |
-| Vault | `0xaC85Ad414b9d123554DbcD9470046BA285206b7A` | [View](https://arbitrum-sepolia.arbiscan.io/address/0xaC85Ad414b9d123554DbcD9470046BA285206b7A) |
-| StrategyRegistry | `0x2a6EC49e2B91279b554592bd1CEdd5F98DE199cF` | [View](https://arbitrum-sepolia.arbiscan.io/address/0x2a6EC49e2B91279b554592bd1CEdd5F98DE199cF) |
-| StrategyNFT | `0xA7eD2A85Ac7d18bF5CcF9705700ecdd835742DdF` | [View](https://arbitrum-sepolia.arbiscan.io/address/0xA7eD2A85Ac7d18bF5CcF9705700ecdd835742DdF) |
-| RoyaltyDistributor | `0x94bbC7267Ad6e96D7Dd70A468759938D2545E7d6` | [View](https://arbitrum-sepolia.arbiscan.io/address/0x94bbC7267Ad6e96D7Dd70A468759938D2545E7d6) |
-| StrategySubscriptionManager | `0x40A6C345b6B89e11cA03F157174A7B4db1b59cDA` | [View](https://arbitrum-sepolia.arbiscan.io/address/0x40A6C345b6B89e11cA03F157174A7B4db1b59cDA) |
-| StrategyMarketplace | `0xD709d1D7c85f8eCaB1B5b0cA58CaCC7B21FB9EFD` | [View](https://arbitrum-sepolia.arbiscan.io/address/0xD709d1D7c85f8eCaB1B5b0cA58CaCC7B21FB9EFD) |
-| RiskGuard | `0x786378502e36DBD19472E18ED51fA296d54918F2` | [View](https://arbitrum-sepolia.arbiscan.io/address/0x786378502e36DBD19472E18ED51fA296d54918F2) |
-| PolicyEngine | `0xF46B8af589C6896B8c744acB3465D79AE6F57411` | [View](https://arbitrum-sepolia.arbiscan.io/address/0xF46B8af589C6896B8c744acB3465D79AE6F57411) |
-| TreasuryAutomationController | `0x6FC1E35b5e3D2c0C21Fc7B5512a8DA321662Cf95` | [View](https://arbitrum-sepolia.arbiscan.io/address/0x6FC1E35b5e3D2c0C21Fc7B5512a8DA321662Cf95) |
-| BuybackModule | `0x251950EB71DdcAAf195e104Fb9C8A55DDb117dE8` | [View](https://arbitrum-sepolia.arbiscan.io/address/0x251950EB71DdcAAf195e104Fb9C8A55DDb117dE8) |
-| GovernanceExecutorAdapter | `0x52aef193D52Af430a9854F72e3d96013DE7Fde36` | [View](https://arbitrum-sepolia.arbiscan.io/address/0x52aef193D52Af430a9854F72e3d96013DE7Fde36) |
-| AgentRegistry | `0xC9C3Be78B488349724E56A25E12Abad29F5Df80d` | [View](https://arbitrum-sepolia.arbiscan.io/address/0xC9C3Be78B488349724E56A25E12Abad29F5Df80d) |
-| AgentRevenueDistributor | `0x5FeA0674926cd0A78dc97e0Be7FF3D6e6FBD4136` | [View](https://arbitrum-sepolia.arbiscan.io/address/0x5FeA0674926cd0A78dc97e0Be7FF3D6e6FBD4136) |
-| AgentSubscriptionManager | `0x37b41e1eB5C3865a03C7ab1a7b90226fE8B9F2f9` | [View](https://arbitrum-sepolia.arbiscan.io/address/0x37b41e1eB5C3865a03C7ab1a7b90226fE8B9F2f9) |
+| Contract                     | Address                                      | Deployed link                                                                                                                                                    |
+| ---------------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ExecutionRouter              | `0xe5f2CFeD1441010a3f79fF904dea7b09e9Ef2a8C` | [https://sepolia.arbiscan.io/address/0xe5f2CFeD1441010a3f79fF904dea7b09e9Ef2a8C](https://sepolia.arbiscan.io/address/0xe5f2CFeD1441010a3f79fF904dea7b09e9Ef2a8C) |
+| FeeManager                   | `0x2f42a9F31FdDC4B882D29e7A9Ff3712f4706Bc67` | [https://sepolia.arbiscan.io/address/0x2f42a9F31FdDC4B882D29e7A9Ff3712f4706Bc67](https://sepolia.arbiscan.io/address/0x2f42a9F31FdDC4B882D29e7A9Ff3712f4706Bc67) |
+| ReferralRegistry             | `0x673d380C14E9031dD3835976805a99579c679Caa` | [https://sepolia.arbiscan.io/address/0x673d380C14E9031dD3835976805a99579c679Caa](https://sepolia.arbiscan.io/address/0x673d380C14E9031dD3835976805a99579c679Caa) |
+| WalletAuthorization          | `0x3d5Ca0C49c3C92b6D7619112cC071357C2DFD0AF` | [https://sepolia.arbiscan.io/address/0x3d5Ca0C49c3C92b6D7619112cC071357C2DFD0AF](https://sepolia.arbiscan.io/address/0x3d5Ca0C49c3C92b6D7619112cC071357C2DFD0AF) |
+| VaultFactory                 | `0x556C7b4d4EFBCd6fea9fc93498946fB63fFADA55` | [https://sepolia.arbiscan.io/address/0x556C7b4d4EFBCd6fea9fc93498946fB63fFADA55](https://sepolia.arbiscan.io/address/0x556C7b4d4EFBCd6fea9fc93498946fB63fFADA55) |
+| Vault                        | `0xaC85Ad414b9d123554DbcD9470046BA285206b7A` | [https://sepolia.arbiscan.io/address/0xaC85Ad414b9d123554DbcD9470046BA285206b7A](https://sepolia.arbiscan.io/address/0xaC85Ad414b9d123554DbcD9470046BA285206b7A) |
+| StrategyRegistry             | `0x2a6EC49e2B91279b554592bd1CEdd5F98DE199cF` | [https://sepolia.arbiscan.io/address/0x2a6EC49e2B91279b554592bd1CEdd5F98DE199cF](https://sepolia.arbiscan.io/address/0x2a6EC49e2B91279b554592bd1CEdd5F98DE199cF) |
+| StrategyNFT                  | `0xA7eD2A85Ac7d18bF5CcF9705700ecdd835742DdF` | [https://sepolia.arbiscan.io/address/0xA7eD2A85Ac7d18bF5CcF9705700ecdd835742DdF](https://sepolia.arbiscan.io/address/0xA7eD2A85Ac7d18bF5CcF9705700ecdd835742DdF) |
+| RoyaltyDistributor           | `0x94bbC7267Ad6e96D7Dd70A468759938D2545E7d6` | [https://sepolia.arbiscan.io/address/0x94bbC7267Ad6e96D7Dd70A468759938D2545E7d6](https://sepolia.arbiscan.io/address/0x94bbC7267Ad6e96D7Dd70A468759938D2545E7d6) |
+| StrategySubscriptionManager  | `0x40A6C345b6B89e11cA03F157174A7B4db1b59cDA` | [https://sepolia.arbiscan.io/address/0x40A6C345b6B89e11cA03F157174A7B4db1b59cDA](https://sepolia.arbiscan.io/address/0x40A6C345b6B89e11cA03F157174A7B4db1b59cDA) |
+| StrategyMarketplace          | `0xD709d1D7c85f8eCaB1B5b0cA58CaCC7B21FB9EFD` | [https://sepolia.arbiscan.io/address/0xD709d1D7c85f8eCaB1B5b0cA58CaCC7B21FB9EFD](https://sepolia.arbiscan.io/address/0xD709d1D7c85f8eCaB1B5b0cA58CaCC7B21FB9EFD) |
+| RiskGuard                    | `0x786378502e36DBD19472E18ED51fA296d54918F2` | [https://sepolia.arbiscan.io/address/0x786378502e36DBD19472E18ED51fA296d54918F2](https://sepolia.arbiscan.io/address/0x786378502e36DBD19472E18ED51fA296d54918F2) |
+| PolicyEngine                 | `0xF46B8af589C6896B8c744acB3465D79AE6F57411` | [https://sepolia.arbiscan.io/address/0xF46B8af589C6896B8c744acB3465D79AE6F57411](https://sepolia.arbiscan.io/address/0xF46B8af589C6896B8c744acB3465D79AE6F57411) |
+| TreasuryAutomationController | `0x6FC1E35b5e3D2c0C21Fc7B5512a8DA321662Cf95` | [https://sepolia.arbiscan.io/address/0x6FC1E35b5e3D2c0C21Fc7B5512a8DA321662Cf95](https://sepolia.arbiscan.io/address/0x6FC1E35b5e3D2c0C21Fc7B5512a8DA321662Cf95) |
+| BuybackModule                | `0x251950EB71DdcAAf195e104Fb9C8A55DDb117dE8` | [https://sepolia.arbiscan.io/address/0x251950EB71DdcAAf195e104Fb9C8A55DDb117dE8](https://sepolia.arbiscan.io/address/0x251950EB71DdcAAf195e104Fb9C8A55DDb117dE8) |
+| GovernanceExecutorAdapter    | `0x52aef193D52Af430a9854F72e3d96013DE7Fde36` | [https://sepolia.arbiscan.io/address/0x52aef193D52Af430a9854F72e3d96013DE7Fde36](https://sepolia.arbiscan.io/address/0x52aef193D52Af430a9854F72e3d96013DE7Fde36) |
+| AgentRegistry                | `0xC9C3Be78B488349724E56A25E12Abad29F5Df80d` | [https://sepolia.arbiscan.io/address/0xC9C3Be78B488349724E56A25E12Abad29F5Df80d](https://sepolia.arbiscan.io/address/0xC9C3Be78B488349724E56A25E12Abad29F5Df80d) |
+| AgentRevenueDistributor      | `0x5FeA0674926cd0A78dc97e0Be7FF3D6e6FBD4136` | [https://sepolia.arbiscan.io/address/0x5FeA0674926cd0A78dc97e0Be7FF3D6e6FBD4136](https://sepolia.arbiscan.io/address/0x5FeA0674926cd0A78dc97e0Be7FF3D6e6FBD4136) |
+| AgentSubscriptionManager     | `0x37b41e1eB5C3865a03C7ab1a7b90226fE8B9F2f9` | [https://sepolia.arbiscan.io/address/0x37b41e1eB5C3865a03C7ab1a7b90226fE8B9F2f9](https://sepolia.arbiscan.io/address/0x37b41e1eB5C3865a03C7ab1a7b90226fE8B9F2f9) |
 
 Frontend and SDK use these addresses for Arbitrum Sepolia; see `frontend/src/constants.ts`.
 
